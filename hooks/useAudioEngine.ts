@@ -55,7 +55,7 @@ export function useAudioEngine() {
       const freq = NOTE_FREQUENCIES[note];
       if (!freq || !ctx) return;
 
-      if (!sustainRef.current && activeOscillatorsRef.current.has(note)) {
+      if (activeOscillatorsRef.current.has(note)) {
         stopNote(note);
       }
 
@@ -117,8 +117,15 @@ export function useAudioEngine() {
   }, []);
 
   const setSustain = useCallback((enabled: boolean) => {
+    const wasEnabled = sustainRef.current;
     sustainRef.current = enabled;
-  }, []);
+
+    // Release all held notes when sustain is turned off
+    if (wasEnabled && !enabled) {
+      const notes = Array.from(activeOscillatorsRef.current.keys());
+      notes.forEach((note) => stopNote(note));
+    }
+  }, [stopNote]);
 
   const setEnvelope = useCallback((envelope: Partial<AudioEnvelope>) => {
     envelopeRef.current = { ...envelopeRef.current, ...envelope };
