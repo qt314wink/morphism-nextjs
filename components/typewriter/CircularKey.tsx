@@ -1,20 +1,19 @@
 'use client';
 
-import { useRef, useCallback, useState } from 'react';
+import { useRef, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { useHaptic } from '@/hooks/useHaptic';
 import { useParticleBurst } from '@/hooks/useParticleBurst';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
-import { getVariantTokens } from '@/lib/morphismTokens';
-import type { MorphismVariant } from '@/types';
 
 interface CircularKeyProps {
   char: string;
   angle: number;
   radius: number;
   color: string;
+  isHovered: boolean;
+  isTicking: boolean;
   onType: (char: string) => void;
-  variant?: MorphismVariant;
 }
 
 export function CircularKey({
@@ -22,115 +21,64 @@ export function CircularKey({
   angle,
   radius,
   color,
+  isHovered,
+  isTicking,
   onType,
-  variant = 'clay',
 }: CircularKeyProps) {
   const keyRef = useRef<HTMLButtonElement>(null);
-  const [isPressed, setIsPressed] = useState(false);
   const { trigger: haptic } = useHaptic();
   const { burstFromElement } = useParticleBurst();
   const reducedMotion = useReducedMotion();
-  const tokens = getVariantTokens(variant);
 
-  const centerX = 250;
-  const centerY = 250;
-  const x = centerX + Math.cos(angle) * radius - 28;
-  const y = centerY + Math.sin(angle) * radius - 28;
+  const size = 44;
+  const hoverOffset = isHovered ? 14 : 0;
+  const x = 250 + Math.cos(angle) * (radius + hoverOffset) - size / 2;
+  const y = 250 + Math.sin(angle) * (radius + hoverOffset) - size / 2;
 
   const handleClick = useCallback(() => {
-    setIsPressed(true);
     haptic('light');
     onType(char);
     if (keyRef.current) {
       burstFromElement(keyRef.current, { color, count: 8 });
     }
-    setTimeout(() => setIsPressed(false), 150);
   }, [char, color, onType, haptic, burstFromElement]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        handleClick();
-      }
-    },
-    [handleClick]
-  );
-
-  const baseStyle: React.CSSProperties = {
-    position: 'absolute',
-    left: x,
-    top: y,
-    width: 56,
-    height: 56,
-    borderRadius: '50%',
-    boxShadow: isPressed ? tokens.shadowPressed : tokens.shadowIdle,
-    transform: isPressed ? 'scale(0.9)' : undefined,
-    transition: reducedMotion ? 'none' : 'box-shadow 0.15s ease',
-  };
-
-  if (variant === 'clay') {
-    baseStyle.background = isPressed
-      ? `linear-gradient(145deg, color-mix(in srgb, ${color} 80%, black), color-mix(in srgb, ${color} 60%, black))`
-      : `linear-gradient(145deg, ${color}, color-mix(in srgb, ${color} 80%, black))`;
-    baseStyle.filter = isPressed ? 'brightness(0.85)' : undefined;
-  } else if (variant === 'silicon') {
-    baseStyle.backgroundImage = `${tokens.surface}, var(--silicon-grain)`;
-    baseStyle.border = tokens.border;
-  } else if (variant === 'glass') {
-    baseStyle.background = tokens.surface;
-    baseStyle.backdropFilter = 'var(--glass-blur)';
-    baseStyle.border = tokens.border;
-  } else if (variant === 'gel') {
-    baseStyle.background = `${tokens.surface}, ${color}`;
-    baseStyle.border = tokens.border;
-  } else if (variant === 'paper') {
-    baseStyle.background = tokens.surface;
-    baseStyle.color = 'var(--paper-text)';
-    baseStyle.border = tokens.border;
-  }
 
   return (
     <button
       ref={keyRef}
       type="button"
-      role="button"
-      tabIndex={0}
-      aria-label={`Type ${char}`}
       className={cn(
-        'flex items-center justify-center',
-        'font-bold text-lg font-mono text-white',
-        'border-none outline-none cursor-pointer',
-        'select-none hover:scale-110 hover:z-50',
-        'focus-visible:ring-2 focus-visible:ring-offset-2'
+        'absolute flex items-center justify-center',
+        'rounded-full border-none outline-none cursor-pointer',
+        'font-bold font-mono text-white select-none',
+        'focus-visible:ring-2 focus-visible:ring-white/50'
       )}
-      style={baseStyle}
+      style={{
+        left: x,
+        top: y,
+        width: size,
+        height: size,
+        background: isTicking
+          ? 'radial-gradient(circle, rgba(255,255,255,0.95), rgba(255,255,255,0.5))'
+          : `linear-gradient(145deg, ${color}, color-mix(in srgb, ${color}, black 20%))`,
+        boxShadow: isHovered
+          ? `0 0 24px ${color}50, 0 10px 30px rgba(0,0,0,0.35), inset 0 2px 6px rgba(255,255,255,0.35)`
+          : isTicking
+            ? `0 0 16px rgba(255,255,255,0.6), 0 4px 12px rgba(0,0,0,0.2)`
+            : `0 4px 12px rgba(0,0,0,0.2), inset 0 1px 2px rgba(255,255,255,0.2)`,
+        transform: `scale(${isHovered ? 1.3 : isTicking ? 1.2 : 1})`,
+        transition: reducedMotion
+          ? 'none'
+          : 'transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.18s ease, background 0.1s ease',
+        zIndex: isHovered ? 20 : isTicking ? 15 : 1,
+        fontSize: isHovered ? 18 : 14,
+        color: isTicking ? '#1a1a2e' : 'white',
+        textShadow: isHovered ? `0 0 8px ${color}` : 'none',
+      }}
       onClick={handleClick}
-      onKeyDown={handleKeyDown}
-      onFocus={(e) => {
-        if (!reducedMotion) {
-          e.currentTarget.style.boxShadow = `${isPressed ? tokens.shadowPressed : tokens.shadowIdle}, ${tokens.focusRing}`;
-        }
-      }}
-      onBlur={(e) => {
-        e.currentTarget.style.boxShadow = isPressed ? tokens.shadowPressed : tokens.shadowIdle;
-      }}
+      aria-label={`Type ${char}`}
     >
-      <span
-        className={cn(
-          'absolute pointer-events-none font-extrabold text-4xl',
-          'transition-all duration-300',
-          isPressed ? 'opacity-100 -translate-y-20 scale-150' : 'opacity-0 translate-y-0 scale-50'
-        )}
-        style={{
-          color: 'white',
-          textShadow: `0 0 30px ${color}, 0 0 60px ${color}`,
-        }}
-      >
-        {char}
-      </span>
-
-      <span className="relative z-10">{char}</span>
+      {char}
     </button>
   );
 }

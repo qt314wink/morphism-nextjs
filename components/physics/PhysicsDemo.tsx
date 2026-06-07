@@ -1,25 +1,35 @@
 'use client';
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { MorphPanel } from '@/components/MorphPanel';
-
 import { usePhysicsSpring } from '@/hooks/usePhysicsSpring';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
 import { cn } from '@/lib/utils';
+
+interface SpringConfig {
+  stiffness: number;
+  damping: number;
+  mass: number;
+}
 
 interface DemoCardProps {
   title: string;
   description: string;
   color: string;
   demoType: 'puff' | 'squish' | 'swell' | 'bounce';
+  config: SpringConfig;
 }
 
-function DemoCard({ title, description, color, demoType }: DemoCardProps) {
+function DemoCard({ title, description, color, demoType, config }: DemoCardProps) {
   const demoRef = useRef<HTMLDivElement>(null);
-  const spring = usePhysicsSpring({ stiffness: 300, damping: 20, mass: 0.8 });
+  const spring = usePhysicsSpring(config);
   const reducedMotion = useReducedMotion();
-  const [isInteracting, setIsInteracting] = useState(false);
+  const [isGlowing, setIsGlowing] = useState(false);
+
+  useEffect(() => {
+    spring.updateConfig(config);
+  }, [config, spring]);
 
   useEffect(() => {
     spring.setPosition(1);
@@ -33,79 +43,144 @@ function DemoCard({ title, description, color, demoType }: DemoCardProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleInteraction = useCallback(() => {
+  const triggerPuff = useCallback(() => {
     if (reducedMotion) return;
-    setIsInteracting(true);
+    spring.setTarget(1.35);
+  }, [spring, reducedMotion]);
 
-    switch (demoType) {
-      case 'puff':
-        spring.setTarget(1.3);
-        setTimeout(() => spring.setTarget(1), 400);
-        break;
-      case 'squish':
-        if (demoRef.current) {
-          demoRef.current.style.borderRadius = '30%';
-        }
-        spring.setTarget(0.5);
-        setTimeout(() => {
-          spring.setTarget(1);
-          if (demoRef.current) {
-            demoRef.current.style.borderRadius = '1rem';
-          }
-        }, 300);
-        break;
-      case 'swell':
-        if (demoRef.current) {
-          demoRef.current.style.filter = 'brightness(1.3)';
-          demoRef.current.style.boxShadow = `0 0 50px ${color}80, 0 0 100px ${color}40`;
-        }
-        spring.setTarget(1.15);
-        setTimeout(() => {
-          spring.setTarget(1);
-          if (demoRef.current) {
-            demoRef.current.style.filter = 'brightness(1)';
-            demoRef.current.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
-          }
-        }, 300);
-        break;
-      case 'bounce':
-        spring.setTarget(1.1);
-        setTimeout(() => spring.setTarget(1), 200);
-        break;
+  const releasePuff = useCallback(() => {
+    spring.setTarget(1);
+  }, [spring]);
+
+  const triggerSquish = useCallback(() => {
+    if (reducedMotion) return;
+    if (demoRef.current) {
+      demoRef.current.style.borderRadius = '30%';
     }
+    spring.setTarget(0.5);
+  }, [spring, reducedMotion]);
 
-    setTimeout(() => setIsInteracting(false), 600);
-  }, [demoType, spring, color, reducedMotion]);
+  const releaseSquish = useCallback(() => {
+    spring.setTarget(1);
+    if (demoRef.current) {
+      demoRef.current.style.borderRadius = '1rem';
+    }
+  }, [spring]);
+
+  const triggerSwell = useCallback(() => {
+    if (reducedMotion) return;
+    setIsGlowing(true);
+    spring.setTarget(1.08);
+  }, [spring, reducedMotion]);
+
+  const releaseSwell = useCallback(() => {
+    setIsGlowing(false);
+    spring.setTarget(1);
+  }, [spring]);
+
+  const triggerBounce = useCallback(() => {
+    if (reducedMotion) return;
+    spring.setTarget(0.55);
+    setTimeout(() => spring.setTarget(1.25), 100);
+  }, [spring, reducedMotion]);
+
+  const handleMouseEnter = useCallback(() => {
+    if (demoType === 'puff') triggerPuff();
+    if (demoType === 'swell') triggerSwell();
+  }, [demoType, triggerPuff, triggerSwell]);
+
+  const handleMouseLeave = useCallback(() => {
+    if (demoType === 'puff') releasePuff();
+    if (demoType === 'squish') releaseSquish();
+    if (demoType === 'swell') releaseSwell();
+  }, [demoType, releasePuff, releaseSquish, releaseSwell]);
+
+  const handleMouseDown = useCallback(() => {
+    if (demoType === 'squish') triggerSquish();
+    if (demoType === 'bounce') triggerBounce();
+  }, [demoType, triggerSquish, triggerBounce]);
+
+  const handleMouseUp = useCallback(() => {
+    if (demoType === 'squish') releaseSquish();
+  }, [demoType, releaseSquish]);
+
+  const handleClick = useCallback(() => {
+    if (demoType === 'bounce') triggerBounce();
+    if (demoType === 'puff') {
+      triggerPuff();
+      setTimeout(releasePuff, 500);
+    }
+    if (demoType === 'swell') {
+      triggerSwell();
+      setTimeout(releaseSwell, 500);
+    }
+  }, [demoType, triggerBounce, triggerPuff, releasePuff, triggerSwell, releaseSwell]);
 
   return (
-    <MorphPanel variant="glass" className="text-center cursor-pointer" onClick={handleInteraction}>
+    <MorphPanel variant="glass" className="text-center">
       <div
-        ref={demoRef}
-        className={cn(
-          'w-20 h-20 mx-auto mb-4 rounded-2xl shadow-lg',
-          isInteracting && 'cursor-wait'
-        )}
-        style={{
-          background: `linear-gradient(135deg, ${color}, color-mix(in srgb, ${color}, black 30%))`,
-          transform: reducedMotion ? 'scale(1)' : undefined,
+        className="w-full h-full cursor-pointer select-none py-2"
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
+        onClick={handleClick}
+        role="button"
+        tabIndex={0}
+        aria-label={`${title} demo`}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleClick();
+          }
         }}
-      />
-      <h3 className="text-white font-bold mb-1 capitalize">{title}</h3>
-      <p className="text-white/50 text-xs">{description}</p>
+      >
+        <div className="w-20 h-20 mx-auto mb-4">
+          <div
+            ref={demoRef}
+            className={cn(
+              'w-full h-full rounded-2xl',
+              'transition-[filter,box-shadow,border-radius] duration-500 ease-out'
+            )}
+            style={{
+              background: `linear-gradient(135deg, ${color}, color-mix(in srgb, ${color}, black 30%))`,
+              boxShadow: isGlowing
+                ? `0 0 16px ${color}30, 0 0 32px ${color}15, 0 4px 12px rgba(0,0,0,0.1)`
+                : '0 4px 12px rgba(0,0,0,0.1)',
+              filter: isGlowing ? 'brightness(1.06) saturate(1.15)' : 'brightness(1) saturate(1)',
+            }}
+          />
+        </div>
+        <h3 className="text-white font-bold mb-1 capitalize">{title}</h3>
+        <p className="text-white/50 text-xs">{description}</p>
+      </div>
     </MorphPanel>
   );
 }
 
 export function PhysicsDemo() {
   const [damping, setDamping] = useState(0.5);
+  const sharedConfig = useMemo(
+    () => ({
+      stiffness: 300,
+      damping: 5 + damping * 30,
+      mass: 0.8,
+    }),
+    [damping]
+  );
+
   const demoRef = useRef<HTMLButtonElement>(null);
-  const spring = usePhysicsSpring({ stiffness: 200, damping: 20, mass: 1 });
+  const testSpring = usePhysicsSpring(sharedConfig);
   const reducedMotion = useReducedMotion();
 
   useEffect(() => {
-    spring.setPosition(1);
-    spring.setTarget(1);
-    const unsubscribe = spring.subscribe((pos) => {
+    testSpring.updateConfig(sharedConfig);
+  }, [sharedConfig, testSpring]);
+
+  useEffect(() => {
+    testSpring.setPosition(1);
+    testSpring.setTarget(1);
+    const unsubscribe = testSpring.subscribe((pos) => {
       if (demoRef.current) {
         demoRef.current.style.transform = `scale(${pos})`;
       }
@@ -116,17 +191,11 @@ export function PhysicsDemo() {
 
   const testDamping = useCallback(() => {
     if (reducedMotion) return;
-    const stiffness = 1 - damping;
-    spring.updateConfig({
-      stiffness: 300 * stiffness + 50,
-      damping: 30 * damping + 5,
-      mass: 1,
-    });
-    spring.setTarget(0.8);
-    setTimeout(() => spring.setTarget(1), 100);
-  }, [damping, spring, reducedMotion]);
+    testSpring.setTarget(0.65);
+    setTimeout(() => testSpring.setTarget(1.2), 120);
+  }, [testSpring, reducedMotion]);
 
-  const demos: DemoCardProps[] = [
+  const demos: Omit<DemoCardProps, 'config'>[] = [
     { title: 'Puff', description: 'Inflate on hover', color: '#EC4899', demoType: 'puff' },
     { title: 'Squish', description: 'Compress on press', color: '#2DD4BF', demoType: 'squish' },
     { title: 'Swell', description: 'Glow & expand', color: '#FBBF24', demoType: 'swell' },
@@ -142,7 +211,7 @@ export function PhysicsDemo() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
         {demos.map((demo) => (
-          <DemoCard key={demo.title} {...demo} />
+          <DemoCard key={demo.title} {...demo} config={sharedConfig} />
         ))}
       </div>
 

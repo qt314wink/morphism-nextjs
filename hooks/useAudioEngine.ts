@@ -144,6 +144,26 @@ export function useAudioEngine() {
     osc.stop(ctx.currentTime + 0.05);
   }, [initAudio]);
 
+  const playTickSound = useCallback(() => {
+    const ctx = initAudio();
+    if (!ctx) return;
+
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(1400, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.02);
+
+    gain.gain.setValueAtTime(0.04, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.03);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.04);
+  }, [initAudio]);
+
   useEffect(() => {
     return () => {
       activeOscillatorsRef.current.forEach(({ osc }) => {
@@ -163,6 +183,7 @@ export function useAudioEngine() {
     setSustain,
     setEnvelope,
     playTypeSound,
+    playTickSound,
     resume,
     getState,
     isSustaining: () => sustainRef.current,
